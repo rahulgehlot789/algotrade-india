@@ -28,6 +28,30 @@ def calculate_rsi(data, window = 14):
 
     return rsi
 
+def calculate_macd(data):
+
+    close = data["Close"]
+
+    ema12 = close.ewm(
+        span = 12 , 
+        adjust = False
+    ).mean()
+
+    ema26 = close.ewm(
+        span = 26, 
+        adjust = False
+    ).mean()
+
+    macd = ema12 - ema26
+
+    signal = macd.ewm(
+        span = 9 , 
+        adjust = False
+    ).mean()
+
+    histogram = macd - signal
+
+    return macd ,signal, histogram
 
 if __name__ == "__main__":
     from data import get_stock_data
@@ -38,4 +62,12 @@ if __name__ == "__main__":
     data["SMA20"] = calculate_sma(data, 20)
     data["SMA50"] = calculate_sma(data, 50)
 
-    print(data[["Close", "SMA20", "SMA50", "RSI"]].tail(10))
+    macd, signal, histogram = calculate_macd(data)
+
+    data["MACD"] = macd
+    data["Signal"] = signal
+    data["Histogram"] = histogram
+
+
+
+    print(data[["Close", "SMA20", "SMA50", "RSI", "MACD", "Signal","Histogram"]].tail(10))
