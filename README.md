@@ -31,7 +31,27 @@ You can later replace this section with:
 ```markdown
 ![AlgoTrade India Dashboard](docs/dashboard.png)
 ```
+# 🖥️ Dashboard
 
+## Market Overview
+
+![Market Overview](docs\dashboard01.png)
+
+## Price & Moving Averages
+
+![Price Analysis](docs\Moving_average.png)
+
+## RSI
+
+![RSI](docs\RSI.png)
+
+## Backtest Performance
+
+![Backtest Performance](docs\Performance_metrics.png)
+
+## MACD
+
+![MACD](docs\MACD.png)
 ---
 
 # 📌 Project Overview
