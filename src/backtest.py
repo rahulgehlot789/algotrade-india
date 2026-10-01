@@ -1,59 +1,143 @@
 import pandas as pd
 
-def run_backtest(data, initial_capital=100000):
+def run_backtest(
+    data,
+    initial_capital=100000,
+    transaction_cost=0.001
+):
     """
-    Run a simple long-only backtest.
+    Run a long-only historical backtest.
 
-    Parameters:
-        data: DataFrame containing price and trading signals
-        initial_capital: Starting virtual capital
+    Trades are executed at the next trading day's Open
+    to avoid same-day look-ahead bias.
 
-    Returns:
-        DataFrame containing portfolio performance
+    transaction_cost:
+        0.001 = 0.10% transaction cost per trade.
     """
 
     data = data.copy()
 
-    cash = initial_capital
+    cash = float(initial_capital)
     shares = 0
 
     portfolio_values = []
 
+    trades = []
+
+    pending_signal = None
+
     for i in range(len(data)):
 
-        # Current day's data
-        price = data["Close"].iloc[i]
-        signal = data["Signal"].iloc[i]
+        current_close = float(data["Close"].iloc[i])
 
-        # We need the next day's Open for execution
-        if i < len(data) - 1:
-            next_open = data["Open"].iloc[i + 1]
-        else:
-            next_open = price
+        
 
-        # BUY
-        if signal == "BUY" and shares == 0:
+        if i > 0:
 
-            shares = int(cash // next_open)
+            execution_price = float(
+                data["Open"].iloc[i]
+            )
 
-            cash = cash - (shares * next_open)
+            signal = data["Signal"].iloc[i - 1]
 
-        # SELL
-        elif signal == "SELL" and shares > 0:
+            # BUY
+            if signal == "BUY" and shares == 0:
 
-            cash = cash + (shares * next_open)
+                shares_to_buy = int(
+                    cash // (
+                        execution_price
+                        * (1 + transaction_cost)
+                    )
+                )
 
-            shares = 0
+                if shares_to_buy > 0:
 
-        # Current portfolio value
-        portfolio_value = cash + (shares * price)
+                    trade_value = (
+                        shares_to_buy
+                        * execution_price
+                    )
 
-        portfolio_values.append(portfolio_value)
+                    cost = (
+                        trade_value
+                        * transaction_cost
+                    )
 
+                    cash -= (
+                        trade_value
+                        + cost
+                    )
+
+                    shares = shares_to_buy
+
+                    trades.append({
+                        "Date": data.index[i],
+                        "Type": "BUY",
+                        "Price": execution_price,
+                        "Shares": shares_to_buy,
+                        "Value": trade_value,
+                        "Cost": cost
+                    })
+
+            # SELL
+            elif signal == "SELL" and shares > 0:
+
+                trade_value = (
+                    shares
+                    * execution_price
+                )
+
+                cost = (
+                    trade_value
+                    * transaction_cost
+                )
+
+                cash += (
+                    trade_value
+                    - cost
+                )
+
+                trades.append({
+                    "Date": data.index[i],
+                    "Type": "SELL",
+                    "Price": execution_price,
+                    "Shares": shares,
+                    "Value": trade_value,
+                    "Cost": cost
+                })
+
+                shares = 0
+
+      
+
+        portfolio_value = (
+            cash
+            + shares * current_close
+        )
+
+        portfolio_values.append(
+            portfolio_value
+        )
+
+    # Add portfolio value
     data["Portfolio_Value"] = portfolio_values
+
+    # Store trade information
+    data.attrs["trades"] = trades
 
     return data
 
+
+def get_trade_log(result):
+    """
+    Return completed trade information.
+    """
+
+    trades = result.attrs.get(
+        "trades",
+        []
+    )
+
+    return trades
 
 def calculate_metrics(result, initial_capital=100000):
 
