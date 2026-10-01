@@ -1,8 +1,10 @@
 import streamlit as st
 import yfinance as yf
+import plotly.graph_objects as go
+from src.indicator import calculate_sma
 
 
-# Page configuration
+
 st.set_page_config(
     page_title="AlgoTrade India",
     page_icon="🇮🇳",
@@ -10,16 +12,20 @@ st.set_page_config(
 )
 
 
-# Title
+
+
 st.title("🇮🇳 AlgoTrade India")
 
-st.write(
+st.caption(
     "Indian Stock Market Technical Analysis & Backtesting Dashboard"
 )
 
 
-# Sidebar
-st.sidebar.header("⚙️ Stock Settings")
+
+# SIDEBAR
+
+
+st.sidebar.header("⚙️ Market Settings")
 
 ticker = st.sidebar.selectbox(
     "Select Stock",
@@ -38,8 +44,6 @@ ticker = st.sidebar.selectbox(
 period = st.sidebar.selectbox(
     "Select Period",
     [
-        "5d",
-        "1mo",
         "6mo",
         "1y",
         "2y",
@@ -48,74 +52,130 @@ period = st.sidebar.selectbox(
 )
 
 
-# Download data
-with st.spinner("Downloading market data..."):
+
+
+with st.spinner("Loading market data..."):
 
     data = yf.Ticker(ticker).history(
         period=period
     )
 
 
-# Check whether data was downloaded
+
 if data.empty:
 
-    st.error(
-        "❌ No market data was received. Please try again."
-    )
+    st.error("Unable to load market data.")
 
     st.stop()
 
+# Calculate moving averages
+data["SMA20"] = calculate_sma(data, 20)
+data["SMA50"] = calculate_sma(data, 50)
 
-# Dashboard
-st.subheader(f"📊 {ticker}")
 
 
-# Current price
 current_price = data["Close"].iloc[-1]
 
+previous_price = data["Close"].iloc[-2]
 
-# Metrics
-col1, col2, col3 = st.columns(3)
+change = current_price - previous_price
+
+change_percent = (
+    change / previous_price
+) * 100
+
+
+
+
+col1, col2, col3, col4 = st.columns(4)
 
 with col1:
 
     st.metric(
         "Current Price",
-        f"₹{current_price:.2f}"
+        f"₹{current_price:.2f}",
+        f"{change_percent:.2f}%"
     )
 
 with col2:
 
     st.metric(
-        "Highest Price",
-        f"₹{data['High'].max():.2f}"
+        "Day High",
+        f"₹{data['High'].iloc[-1]:.2f}"
     )
 
 with col3:
 
     st.metric(
-        "Lowest Price",
-        f"₹{data['Low'].min():.2f}"
+        "Day Low",
+        f"₹{data['Low'].iloc[-1]:.2f}"
+    )
+
+with col4:
+
+    st.metric(
+        "Volume",
+        f"{int(data['Volume'].iloc[-1]):,}"
     )
 
 
-# Historical data
-st.subheader("📋 Historical Data")
 
-st.dataframe(
-    data.tail(20),
+st.subheader("📈 Price Chart")
+
+
+fig = go.Figure()
+
+
+fig.add_trace(
+    go.Scatter(
+        x=data.index,
+        y=data["Close"],
+        mode="lines",
+        name="Close Price"
+    )
+)
+
+fig.add_trace(
+    go.Scatter(
+        x=data.index,
+        y=data["SMA20"],
+        mode="lines",
+        name="SMA 20"
+    )
+)
+
+fig.add_trace(
+    go.Scatter(
+        x=data.index,
+        y=data["SMA50"],
+        mode="lines",
+        name="SMA 50"
+    )
+)
+
+
+fig.update_layout(
+    title=f"{ticker} Price Movement",
+    xaxis_title="Date",
+    yaxis_title="Price (₹)",
+    height=500,
+    hovermode="x unified"
+)
+
+
+st.plotly_chart(
+    fig,
     use_container_width=True
 )
 
-# import streamlit as st
 
-# st.set_page_config(
-#     page_title="AlgoTrade India",
-#     page_icon="🇮🇳"
-# )
+# -----------------------------
+# DATA TABLE
+# -----------------------------
 
-# st.title("🇮🇳 AlgoTrade India")
+with st.expander("📋 View Historical Data"):
 
-# st.success("Streamlit is working!")
-
-# st.write("If you can see this, the Streamlit app is running correctly.")
+    st.dataframe(
+        data.tail(20),
+        use_container_width=True
+    )
