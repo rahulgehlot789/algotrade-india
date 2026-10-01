@@ -1,5 +1,6 @@
 import pandas as pd
 
+
 def run_backtest(
     data,
     initial_capital=100000,
@@ -8,8 +9,8 @@ def run_backtest(
     """
     Run a long-only historical backtest.
 
-    Trades are executed at the next trading day's Open
-    to avoid same-day look-ahead bias.
+    Signals are generated on one day and executed
+    at the next trading day's Open price.
 
     transaction_cost:
         0.001 = 0.10% transaction cost per trade.
@@ -17,34 +18,42 @@ def run_backtest(
 
     data = data.copy()
 
+    # Remove rows with missing values required for backtesting
+    data = data.dropna(
+        subset=[
+            "Open",
+            "Close",
+            "Signal"
+        ]
+    ).copy()
+
     cash = float(initial_capital)
     shares = 0
 
     portfolio_values = []
-
     trades = []
-
-    pending_signal = None
 
     for i in range(len(data)):
 
         current_close = float(data["Close"].iloc[i])
 
-        
-
+        # Execute previous day's signal at today's Open
         if i > 0:
 
-            execution_price = float(
-                data["Open"].iloc[i]
-            )
+            execution_price = float(data["Open"].iloc[i])
+            previous_signal = data["Signal"].iloc[i - 1]
 
-            signal = data["Signal"].iloc[i - 1]
-
+            # -------------------------
             # BUY
-            if signal == "BUY" and shares == 0:
+            # -------------------------
+            if (
+                previous_signal == "BUY"
+                and shares == 0
+            ):
 
                 shares_to_buy = int(
-                    cash // (
+                    cash
+                    / (
                         execution_price
                         * (1 + transaction_cost)
                     )
@@ -78,8 +87,13 @@ def run_backtest(
                         "Cost": cost
                     })
 
+            # -------------------------
             # SELL
-            elif signal == "SELL" and shares > 0:
+            # -------------------------
+            elif (
+                previous_signal == "SELL"
+                and shares > 0
+            ):
 
                 trade_value = (
                     shares
@@ -107,7 +121,9 @@ def run_backtest(
 
                 shares = 0
 
-      
+        # -------------------------
+        # Portfolio value
+        # -------------------------
 
         portfolio_value = (
             cash
@@ -118,10 +134,9 @@ def run_backtest(
             portfolio_value
         )
 
-    # Add portfolio value
     data["Portfolio_Value"] = portfolio_values
 
-    # Store trade information
+    # Store trade history
     data.attrs["trades"] = trades
 
     return data
@@ -129,15 +144,13 @@ def run_backtest(
 
 def get_trade_log(result):
     """
-    Return completed trade information.
+    Return trade history from backtest result.
     """
 
-    trades = result.attrs.get(
+    return result.attrs.get(
         "trades",
         []
     )
-
-    return trades
 
 def calculate_metrics(result, initial_capital=100000):
 

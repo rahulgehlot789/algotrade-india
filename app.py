@@ -1,4 +1,5 @@
 import streamlit as st
+import pandas as pd
 import yfinance as yf
 import plotly.graph_objects as go
 
@@ -9,13 +10,13 @@ from src.indicator import (
 )
 
 from src.stratagy import generate_signals
-
 from src.backtest import run_backtest
+from src.metrics import calculate_metrics
 
 
-# ============================================================
-# PAGE CONFIGURATION
-# ============================================================
+# =========================================================
+# PAGE CONFIG
+# =========================================================
 
 st.set_page_config(
     page_title="AlgoTrade India",
@@ -25,20 +26,18 @@ st.set_page_config(
 )
 
 
-# ============================================================
+# =========================================================
 # CUSTOM CSS
-# ============================================================
+# =========================================================
 
 st.markdown(
     """
     <style>
 
-    /* Main page */
     .main {
         padding-top: 1rem;
     }
 
-    /* Main title */
     .main-title {
         font-size: 42px;
         font-weight: 700;
@@ -51,22 +50,19 @@ st.markdown(
         margin-bottom: 30px;
     }
 
-    /* Section headings */
     .section-title {
         font-size: 26px;
         font-weight: 600;
-        margin-top: 25px;
-        margin-bottom: 10px;
+        margin-top: 30px;
+        margin-bottom: 15px;
     }
 
-    /* Metric cards */
     div[data-testid="metric-container"] {
         padding: 15px;
         border-radius: 12px;
         border: 1px solid rgba(128, 128, 128, 0.2);
     }
 
-    /* Sidebar */
     section[data-testid="stSidebar"] {
         padding-top: 1rem;
     }
@@ -77,9 +73,9 @@ st.markdown(
 )
 
 
-# ============================================================
+# =========================================================
 # HEADER
-# ============================================================
+# =========================================================
 
 st.markdown(
     '<div class="main-title">🇮🇳 AlgoTrade India</div>',
@@ -94,9 +90,9 @@ st.markdown(
 )
 
 
-# ============================================================
+# =========================================================
 # SIDEBAR
-# ============================================================
+# =========================================================
 
 st.sidebar.title("⚙️ Market Settings")
 
@@ -133,7 +129,6 @@ initial_capital = st.sidebar.number_input(
     step=10000
 )
 
-
 st.sidebar.divider()
 
 st.sidebar.info(
@@ -142,9 +137,9 @@ st.sidebar.info(
 )
 
 
-# ============================================================
-# LOAD DATA
-# ============================================================
+# =========================================================
+# LOAD MARKET DATA
+# =========================================================
 
 with st.spinner("Loading market data..."):
 
@@ -163,9 +158,9 @@ with st.spinner("Loading market data..."):
         st.stop()
 
 
-# ============================================================
-# DATA VALIDATION
-# ============================================================
+# =========================================================
+# BASIC DATA VALIDATION
+# =========================================================
 
 if data.empty:
 
@@ -200,9 +195,47 @@ if missing_columns:
     st.stop()
 
 
-# ============================================================
-# TECHNICAL INDICATORS
-# ============================================================
+# =========================================================
+# CLEAN MARKET DATA
+# =========================================================
+
+data = data[
+    required_columns
+].copy()
+
+
+# Convert columns to numeric
+for column in required_columns:
+
+    data[column] = pd.to_numeric(
+        data[column],
+        errors="coerce"
+    )
+
+
+# Remove invalid market rows
+data = data.dropna(
+    subset=[
+        "Open",
+        "High",
+        "Low",
+        "Close"
+    ]
+).copy()
+
+
+if data.empty:
+
+    st.error(
+        "No valid market price data is available."
+    )
+
+    st.stop()
+
+
+# =========================================================
+# CALCULATE INDICATORS
+# =========================================================
 
 data["SMA20"] = calculate_sma(
     data,
@@ -215,40 +248,81 @@ data["SMA50"] = calculate_sma(
 )
 
 data["RSI"] = calculate_rsi(
-    data
+    data,
+    14
 )
+
 
 macd, macd_signal, macd_histogram = calculate_macd(
     data
 )
 
 data["MACD"] = macd
-
 data["MACD_Signal"] = macd_signal
-
 data["MACD_Histogram"] = macd_histogram
 
 
-# ============================================================
-# TRADING SIGNALS
-# ============================================================
+# =========================================================
+# REMOVE INDICATOR NaN VALUES
+# =========================================================
 
-data = generate_signals(data)
+indicator_columns = [
+    "SMA20",
+    "SMA50",
+    "RSI",
+    "MACD",
+    "MACD_Signal",
+    "MACD_Histogram"
+]
+
+data = data.dropna(
+    subset=indicator_columns
+).copy()
 
 
-# ============================================================
-# BACKTEST
-# ============================================================
+if data.empty:
+
+    st.error(
+        "Not enough historical data to calculate "
+        "all technical indicators."
+    )
+
+    st.stop()
+
+
+# =========================================================
+# GENERATE TRADING SIGNALS
+# =========================================================
+
+data = generate_signals(
+    data
+)
+
+
+# =========================================================
+# RUN BACKTEST
+# =========================================================
 
 result = run_backtest(
     data,
+    initial_capital=initial_capital,
+    transaction_cost=0.001
+)
+
+
+# =========================================================
+# CALCULATE PERFORMANCE METRICS
+# =========================================================
+
+metrics = calculate_metrics(
+    result,
     initial_capital=initial_capital
 )
 
 
-# ============================================================
-# BASIC MARKET DATA
-# ============================================================
+# =========================================================
+# CURRENT MARKET VALUES
+# =========================================================
 
 current_price = float(
     data["Close"].iloc[-1]
@@ -259,11 +333,13 @@ previous_price = float(
 )
 
 price_change = (
-    current_price - previous_price
+    current_price
+    - previous_price
 )
 
 price_change_percent = (
-    price_change / previous_price
+    price_change
+    / previous_price
 ) * 100
 
 
@@ -271,24 +347,52 @@ current_rsi = float(
     data["RSI"].iloc[-1]
 )
 
-current_signal = data["Signal"].iloc[-1]
-
-final_portfolio_value = float(
-    result["Portfolio_Value"].iloc[-1]
-)
-
-strategy_return = (
-    (final_portfolio_value - initial_capital)
-    / initial_capital
-) * 100
+current_signal = data[
+    "Signal"
+].iloc[-1]
 
 
-# ============================================================
-# TOP KPI SECTION
-# ============================================================
+# =========================================================
+# PERFORMANCE VALUES
+# =========================================================
+
+strategy_return = metrics[
+    "Strategy Return (%)"
+]
+
+buy_hold_return = metrics[
+    "Buy & Hold Return (%)"
+]
+
+final_portfolio_value = metrics[
+    "Final Portfolio Value"
+]
+
+max_drawdown = metrics[
+    "Maximum Drawdown (%)"
+]
+
+win_rate = metrics[
+    "Win Rate (%)"
+]
+
+completed_trades = metrics[
+    "Completed Trades"
+]
+
+transaction_costs = metrics[
+    "Transaction Costs"
+]
+
+
+# =========================================================
+# MARKET OVERVIEW
+# =========================================================
 
 st.markdown(
-    '<div class="section-title">📊 Market Overview</div>',
+    '<div class="section-title">'
+    '📊 Market Overview'
+    '</div>',
     unsafe_allow_html=True
 )
 
@@ -325,16 +429,18 @@ with col4:
 
     st.metric(
         "Final Portfolio",
-        f"₹{final_portfolio_value:,.0f}"
+        f"₹{final_portfolio_value:,.2f}"
     )
 
 
-# ============================================================
+# =========================================================
 # CURRENT SIGNAL
-# ============================================================
+# =========================================================
 
 st.markdown(
-    '<div class="section-title">🎯 Current Trading Signal</div>',
+    '<div class="section-title">'
+    '🎯 Current Trading Signal'
+    '</div>',
     unsafe_allow_html=True
 )
 
@@ -358,12 +464,14 @@ else:
     )
 
 
-# ============================================================
-# PRICE CHART
-# ============================================================
+# =========================================================
+# PRICE + MOVING AVERAGES
+# =========================================================
 
 st.markdown(
-    '<div class="section-title">📈 Price & Moving Averages</div>',
+    '<div class="section-title">'
+    '📈 Price & Moving Averages'
+    '</div>',
     unsafe_allow_html=True
 )
 
@@ -371,7 +479,7 @@ st.markdown(
 price_fig = go.Figure()
 
 
-# Closing price
+# Close price
 price_fig.add_trace(
     go.Scatter(
         x=data.index,
@@ -407,7 +515,7 @@ price_fig.add_trace(
 )
 
 
-# BUY markers
+# BUY signals
 buy_data = data[
     data["Signal"] == "BUY"
 ]
@@ -427,7 +535,7 @@ price_fig.add_trace(
 )
 
 
-# SELL markers
+# SELL signals
 sell_data = data[
     data["Signal"] == "SELL"
 ]
@@ -474,12 +582,14 @@ st.plotly_chart(
 )
 
 
-# ============================================================
+# =========================================================
 # RSI
-# ============================================================
+# =========================================================
 
 st.markdown(
-    '<div class="section-title">📊 RSI — Relative Strength Index</div>',
+    '<div class="section-title">'
+    '📊 RSI — Relative Strength Index'
+    '</div>',
     unsafe_allow_html=True
 )
 
@@ -498,7 +608,6 @@ rsi_fig.add_trace(
 )
 
 
-# 70 level
 rsi_fig.add_hline(
     y=70,
     line_dash="dash",
@@ -506,7 +615,6 @@ rsi_fig.add_hline(
 )
 
 
-# 50 level
 rsi_fig.add_hline(
     y=50,
     line_dash="dot",
@@ -514,7 +622,6 @@ rsi_fig.add_hline(
 )
 
 
-# 30 level
 rsi_fig.add_hline(
     y=30,
     line_dash="dash",
@@ -523,7 +630,7 @@ rsi_fig.add_hline(
 
 
 rsi_fig.update_layout(
-    height=380,
+    height=400,
     yaxis=dict(
         range=[0, 100],
         title="RSI"
@@ -545,12 +652,14 @@ st.plotly_chart(
 )
 
 
-# ============================================================
+# =========================================================
 # MACD
-# ============================================================
+# =========================================================
 
 st.markdown(
-    '<div class="section-title">📉 MACD</div>',
+    '<div class="section-title">'
+    '📉 MACD — Moving Average Convergence Divergence'
+    '</div>',
     unsafe_allow_html=True
 )
 
@@ -615,12 +724,14 @@ st.plotly_chart(
 )
 
 
-# ============================================================
+# =========================================================
 # BACKTEST PERFORMANCE
-# ============================================================
+# =========================================================
 
 st.markdown(
-    '<div class="section-title">💰 Backtest Performance</div>',
+    '<div class="section-title">'
+    '💰 Backtest Performance'
+    '</div>',
     unsafe_allow_html=True
 )
 
@@ -666,57 +777,16 @@ st.plotly_chart(
 )
 
 
-# ============================================================
+# =========================================================
 # PERFORMANCE STATISTICS
-# ============================================================
+# =========================================================
 
 st.markdown(
-    '<div class="section-title">📊 Performance Statistics</div>',
+    '<div class="section-title">'
+    '📊 Performance Statistics'
+    '</div>',
     unsafe_allow_html=True
 )
-
-
-first_price = float(
-    data["Close"].iloc[0]
-)
-
-last_price = float(
-    data["Close"].iloc[-1]
-)
-
-
-buy_hold_return = (
-    (last_price - first_price)
-    / first_price
-) * 100
-
-
-running_max = (
-    result["Portfolio_Value"]
-    .cummax()
-)
-
-
-drawdown = (
-    result["Portfolio_Value"]
-    / running_max
-    - 1
-) * 100
-
-
-max_drawdown = float(
-    drawdown.min()
-)
-
-
-buy_signals = (
-    data["Signal"] == "BUY"
-).sum()
-
-
-sell_signals = (
-    data["Signal"] == "SELL"
-).sum()
 
 
 col1, col2, col3, col4 = st.columns(4)
@@ -733,7 +803,7 @@ with col1:
 with col2:
 
     st.metric(
-        "Buy & Hold Return",
+        "Buy & Hold",
         f"{buy_hold_return:+.2f}%"
     )
 
@@ -741,8 +811,8 @@ with col2:
 with col3:
 
     st.metric(
-        "BUY Signals",
-        str(buy_signals)
+        "Win Rate",
+        f"{win_rate:.2f}%"
     )
 
 
@@ -754,12 +824,77 @@ with col4:
     )
 
 
-# ============================================================
-# SIGNAL TABLE
-# ============================================================
+col1, col2, col3 = st.columns(3)
+
+
+with col1:
+
+    st.metric(
+        "Completed Trades",
+        int(completed_trades)
+    )
+
+
+with col2:
+
+    st.metric(
+        "Final Portfolio",
+        f"₹{final_portfolio_value:,.2f}"
+    )
+
+
+with col3:
+
+    st.metric(
+        "Transaction Costs",
+        f"₹{transaction_costs:,.2f}"
+    )
+
+
+# =========================================================
+# TRADE HISTORY
+# =========================================================
 
 st.markdown(
-    '<div class="section-title">📋 Recent Trading Signals</div>',
+    '<div class="section-title">'
+    '📜 Trade History'
+    '</div>',
+    unsafe_allow_html=True
+)
+
+
+trade_log = result.attrs.get(
+    "trades",
+    []
+)
+
+
+if trade_log:
+
+    trade_df = pd.DataFrame(
+        trade_log
+    )
+
+    st.dataframe(
+        trade_df,
+        use_container_width=True
+    )
+
+else:
+
+    st.info(
+        "No trades were generated for this period."
+    )
+
+
+# =========================================================
+# RECENT SIGNALS
+# =========================================================
+
+st.markdown(
+    '<div class="section-title">'
+    '📋 Recent Trading Signals'
+    '</div>',
     unsafe_allow_html=True
 )
 
@@ -783,11 +918,13 @@ st.dataframe(
 )
 
 
-# ============================================================
+# =========================================================
 # RAW DATA
-# ============================================================
+# =========================================================
 
-with st.expander("📁 View Raw Historical Data"):
+with st.expander(
+    "📁 View Raw Historical Data"
+):
 
     st.dataframe(
         data.tail(50),
@@ -795,9 +932,9 @@ with st.expander("📁 View Raw Historical Data"):
     )
 
 
-# ============================================================
+# =========================================================
 # FOOTER
-# ============================================================
+# =========================================================
 
 st.divider()
 
