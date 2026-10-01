@@ -10,21 +10,19 @@ The project combines **market data, technical analysis, trading signals, portfol
 
 ---
 
+
+
 ## 🚀 Live Demo
 
-**Coming soon**
+👉 [Launch AlgoTrade India](https://algotrade-india-123.streamlit.app/)
 
-The Streamlit application will be deployed after the GitHub release.
-
+👉 [View Source Code on GitHub](https://github.com/rahulgehlot789/algotrade-india)
 ---
 
 ## 📸 Dashboard Preview
 
 Add your application screenshot here after deployment:
 
-```text
-docs/dashboard.png
-```
 
 You can later replace this section with:
 
