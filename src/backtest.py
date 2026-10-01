@@ -19,22 +19,33 @@ def run_backtest(data, initial_capital=100000):
 
     portfolio_values = []
 
-    for index, row in data.iterrows():
+    for i in range(len(data)):
 
-        price = row["Close"]
-        signal = row["Signal"]
+        # Current day's data
+        price = data["Close"].iloc[i]
+        signal = data["Signal"].iloc[i]
+
+        # We need the next day's Open for execution
+        if i < len(data) - 1:
+            next_open = data["Open"].iloc[i + 1]
+        else:
+            next_open = price
 
         # BUY
         if signal == "BUY" and shares == 0:
-            shares = cash / price
-            cash = 0
+
+            shares = int(cash // next_open)
+
+            cash = cash - (shares * next_open)
 
         # SELL
         elif signal == "SELL" and shares > 0:
-            cash = shares * price
+
+            cash = cash + (shares * next_open)
+
             shares = 0
 
-        
+        # Current portfolio value
         portfolio_value = cash + (shares * price)
 
         portfolio_values.append(portfolio_value)
